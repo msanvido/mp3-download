@@ -1,0 +1,23 @@
+# Swift build artifacts
+.build/
+.swiftpm/
+Package.resolved
+*.xcodeproj/
+*.xcworkspace/
+DerivedData/
+
+# Built .app bundle (regenerate with ./build.sh)
+MP3Download.app/
+
+# Self-test / autorecord logs
+/tmp/mp3download-*.log
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Auto-record test output (created by --auto-record mode)
+MP3Download-Test-*/

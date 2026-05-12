@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>MP3 Download</string>
+    <key>CFBundleDisplayName</key>
+    <string>MP3 Download</string>
+    <key>CFBundleIdentifier</key>
+    <string>local.mp3download.app</string>
+    <key>CFBundleExecutable</key>
+    <string>MP3Download</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.2</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>MP3 Download needs to capture system audio output so it can record streaming music to MP3 files.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>MP3 Download uses the Microphone permission category to access Core Audio process taps for system-wide audio capture. No physical microphone audio is recorded.</string>
+    <key>NSSystemAudioCaptureOnlyUsageDescription</key>
+    <string>MP3 Download needs to capture system audio so it can record streaming music to MP3 files.</string>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>MP3 Download needs Screen Recording permission to capture system-wide audio output. No screen content is captured or recorded — audio only.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>MP3 Download asks Music, Spotify, and Amazon Music for the current track title so files can be tagged with the song name.</string>
+</dict>
+</plist>
