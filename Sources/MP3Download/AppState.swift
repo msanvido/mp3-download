@@ -17,7 +17,7 @@ final class AppState: ObservableObject {
     @Published var currentLevelDB: Float = -120
     @Published var elapsedSeconds: Double = 0
     @Published var completedFiles: [URL] = []
-    @Published var silenceSplitSeconds: Double = 1.0
+    @Published var silenceSplitSeconds: Double = 0.7
     @Published var streamEndSeconds: Double = 25.0
     @Published var silenceThresholdDB: Float = -45
     @Published var availableSources: [AudioSourceUI] = [.all]
