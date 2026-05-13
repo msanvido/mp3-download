@@ -105,7 +105,19 @@ struct ContentView: View {
 
     private var recordingsList: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Recorded tracks (\(state.completedFiles.count))").font(.headline)
+            HStack {
+                Text("Recorded tracks (\(state.completedFiles.count))").font(.headline)
+                Spacer()
+                if !state.completedFiles.isEmpty {
+                    Button {
+                        state.identifyAll()
+                    } label: {
+                        Label("Identify all", systemImage: "waveform.badge.magnifyingglass")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Identify all tracks via AudD.io and rename")
+                }
+            }
             if state.completedFiles.isEmpty {
                 Text("Nothing yet — start playback in your streaming app and hit Start.")
                     .foregroundStyle(.secondary).font(.callout)
@@ -113,20 +125,46 @@ struct ContentView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 4) {
                         ForEach(state.completedFiles.reversed(), id: \.self) { url in
-                            HStack {
-                                Image(systemName: "music.note")
-                                Text(url.lastPathComponent).lineLimit(1).truncationMode(.middle)
-                                Spacer()
-                                Button("Reveal") { state.revealInFinder(url) }
-                                    .buttonStyle(.borderless)
-                            }
-                            .padding(.vertical, 2)
+                            recordingRow(url)
                         }
                     }
                 }
-                .frame(maxHeight: 180)
+                .frame(maxHeight: 200)
+            }
+            HStack(spacing: 6) {
+                Text("AudD API key (optional):").font(.caption).foregroundStyle(.secondary)
+                SecureField("free trial without key", text: $state.auddAPIKey, onCommit: state.saveAPIKey)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.caption)
+                    .frame(maxWidth: 220)
+                Spacer()
+                Link("audd.io", destination: URL(string: "https://audd.io/")!)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
             }
         }
+    }
+
+    private func recordingRow(_ url: URL) -> some View {
+        let identifying = state.identifyingFiles.contains(url)
+        let errorMsg = state.identifyErrors[url]
+        return HStack(spacing: 8) {
+            Image(systemName: "music.note")
+            VStack(alignment: .leading, spacing: 1) {
+                Text(url.lastPathComponent).lineLimit(1).truncationMode(.middle)
+                if let errorMsg {
+                    Text(errorMsg).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+            Spacer()
+            if identifying {
+                ProgressView().scaleEffect(0.6)
+            } else {
+                Button("Identify") { state.identify(url) }.buttonStyle(.borderless).font(.callout)
+            }
+            Button("Reveal") { state.revealInFinder(url) }.buttonStyle(.borderless).font(.callout)
+        }
+        .padding(.vertical, 2)
     }
 
     private var isRecording: Bool {

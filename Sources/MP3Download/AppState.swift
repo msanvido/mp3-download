@@ -22,6 +22,9 @@ final class AppState: ObservableObject {
     @Published var silenceThresholdDB: Float = -45
     @Published var availableSources: [AudioSourceUI] = [.all]
     @Published var selectedSourceID: String = AudioSourceUI.all.id
+    @Published var identifyingFiles: Set<URL> = []
+    @Published var identifyErrors: [URL: String] = [:]
+    @Published var auddAPIKey: String = UserDefaults.standard.string(forKey: "auddAPIKey") ?? ""
 
     private var recorder: Recorder?
     private var nowPlaying: NowPlayingWatcher?
@@ -102,6 +105,49 @@ final class AppState: ObservableObject {
 
     func revealInFinder(_ url: URL) {
         NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+
+    func saveAPIKey() {
+        UserDefaults.standard.set(auddAPIKey, forKey: "auddAPIKey")
+    }
+
+    func identify(_ url: URL) {
+        guard !identifyingFiles.contains(url) else { return }
+        identifyingFiles.insert(url)
+        identifyErrors[url] = nil
+        let key = auddAPIKey.isEmpty ? nil : auddAPIKey
+        Task {
+            do {
+                let match = try await SongIdentifier.identify(audioURL: url, apiKey: key)
+                await MainActor.run { self.applyIdentifyResult(url: url, match: match, error: nil) }
+            } catch {
+                await MainActor.run { self.applyIdentifyResult(url: url, match: nil, error: error.localizedDescription) }
+            }
+        }
+    }
+
+    func identifyAll() {
+        for url in completedFiles where !identifyingFiles.contains(url) {
+            identify(url)
+        }
+    }
+
+    private func applyIdentifyResult(url: URL, match: SongIdentifier.Match?, error: String?) {
+        identifyingFiles.remove(url)
+        guard let match else {
+            if let error { identifyErrors[url] = error }
+            else        { identifyErrors[url] = "Not recognised" }
+            return
+        }
+        do {
+            let newURL = try SongIdentifier.rename(url, toBaseName: match.filename)
+            if let idx = completedFiles.firstIndex(of: url) {
+                completedFiles[idx] = newURL
+            }
+            identifyErrors[newURL] = nil
+        } catch {
+            identifyErrors[url] = "Rename failed: \(error.localizedDescription)"
+        }
     }
 
     func openOutputDir() {
