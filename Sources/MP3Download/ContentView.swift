@@ -31,6 +31,7 @@ struct ContentView: View {
                     .truncationMode(.middle)
             }
             Spacer()
+            Button("Change…") { state.chooseOutputDirectory() }
             Button("Open Folder") { state.openOutputDir() }
         }
     }

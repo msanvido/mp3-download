@@ -34,9 +34,53 @@ final class AppState: ObservableObject {
     init() {
         let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Downloads")
-        self.outputDirectory = downloads.appendingPathComponent("MP3Download")
+        let defaultDir = downloads.appendingPathComponent("MP3Download")
+        let saved = UserDefaults.standard.string(forKey: "outputDirectory").map { URL(fileURLWithPath: $0) }
+        self.outputDirectory = saved ?? defaultDir
         try? FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
         refreshSources()
+        loadExistingRecordings()
+    }
+
+    func setOutputDirectory(_ url: URL) {
+        outputDirectory = url
+        UserDefaults.standard.set(url.path, forKey: "outputDirectory")
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        loadExistingRecordings()
+    }
+
+    func chooseOutputDirectory() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose where MP3Download saves and reads MP3 files"
+        panel.prompt = "Select"
+        panel.directoryURL = outputDirectory
+        if panel.runModal() == .OK, let url = panel.url {
+            setOutputDirectory(url)
+        }
+    }
+
+    func loadExistingRecordings() {
+        identifyingFiles = []
+        identifyErrors = [:]
+        guard let urls = try? FileManager.default.contentsOfDirectory(
+            at: outputDirectory,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            completedFiles = []
+            return
+        }
+        completedFiles = urls
+            .filter { $0.pathExtension.lowercased() == "mp3" }
+            .sorted { lhs, rhs in
+                let l = (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                let r = (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                return l < r
+            }
     }
 
     func refreshSources() {
@@ -176,10 +220,12 @@ extension AppState: RecorderDelegate {
 
     nonisolated func recorderDidFinishTrack(url: URL) {
         Task { @MainActor in
-            self.completedFiles.append(url)
+            // Avoid duplicates if a rescan happened to include this file already.
+            if !self.completedFiles.contains(url) {
+                self.completedFiles.append(url)
+            }
             self.status = .waitingForAudio
             self.trackStart = nil
-            // Clear the title so the next track starts blank until detected.
             self.currentTrackTitle = ""
             self.recorder?.updateCurrentTitle(nil)
         }
