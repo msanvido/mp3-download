@@ -40,6 +40,8 @@ final class Recorder {
     private var trackIndex: Int = 0
     private var ioProcCallbackCount: Int = 0
     private var watchdogTimer: DispatchSourceTimer?
+    private var streamEndFired = false
+    private var stopped = false
 
     private let lameURL: URL?
     private let titleLock = NSLock()
@@ -80,6 +82,34 @@ final class Recorder {
         startWatchdog()
     }
 
+    /// Test-only: skip the audio tap, prep state so injected frames can drive the pipeline.
+    func startForTesting(sampleRate: Double, channelCount: Int) throws {
+        try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+        guard lameURL != nil else {
+            throw NSError(domain: "Recorder", code: -1, userInfo: [
+                NSLocalizedDescriptionKey: "`lame` not found on PATH."
+            ])
+        }
+        self.sampleRate = sampleRate
+        self.channelCount = channelCount
+    }
+
+    /// Test-only: feed a buffer of frames as if it had arrived from the tap.
+    func injectFramesForTesting(left: [Float], right: [Float]?, sampleRate: Double) {
+        handleFrames(left: left, right: right, sampleRate: sampleRate)
+    }
+
+    /// Test-only: block until any in-flight encode completion has drained.
+    func waitForEncodingToFinish(timeout: TimeInterval) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            var idle = false
+            workQueue.sync { idle = (self.currentFile == nil) }
+            if idle { break }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+    }
+
     private func startWatchdog() {
         let timer = DispatchSource.makeTimerSource(queue: workQueue)
         timer.schedule(deadline: .now() + 3.0)
@@ -106,8 +136,9 @@ final class Recorder {
         watchdogTimer = nil
         tap.onFrames = nil
         tap.stop()
-        workQueue.sync { [weak self] in
-            self?.finalizeCurrentTrack(reason: .userStop)
+        workQueue.sync {
+            self.stopped = true
+            self.finalizeCurrentTrack(reason: .userStop)
         }
     }
 
@@ -135,6 +166,7 @@ final class Recorder {
     private enum FinalizeReason { case silenceSplit, streamEnd, userStop }
 
     private func processFrames(left: [Float], right: [Float]?, db: Float, sampleRate: Double) {
+        if stopped { return }
         let frameCount = left.count
         totalFramesProcessed += frameCount
         let isSilent = db < silenceThresholdDB
@@ -147,12 +179,6 @@ final class Recorder {
             streamSilenceFrames = 0
         }
 
-        // Long total silence with no recording in progress → stream is over.
-        if currentFile == nil && hasReachedStreamEnd() && totalFramesProcessed > Int(sampleRate * 2) {
-            delegate?.recorderDidDetectStreamEnd()
-            return
-        }
-
         if !isSilent {
             // Start a new track on the first audio after silence.
             if currentFile == nil {
@@ -162,27 +188,28 @@ final class Recorder {
                     return
                 }
                 hasSeenAudioInTrack = true
+                streamEndFired = false
                 delegate?.recorderDidStartTrack()
             }
             writeBuffer(left: left, right: right)
-        } else if let _ = currentFile, hasSeenAudioInTrack {
+        } else if currentFile != nil, hasSeenAudioInTrack {
             // Still write some of the silence so cuts don't sound abrupt — up to split threshold.
             writeBuffer(left: left, right: right)
             let silenceSecs = Double(silenceRunFrames) / sampleRate
             if silenceSecs >= silenceSplitSeconds {
                 finalizeCurrentTrack(reason: .silenceSplit)
-                // Reset silence run so the stream-end timer isn't confused.
+                silenceRunFrames = 0   // don't re-finalize on the next silent frame
             }
         }
 
-        // After finalizing, check whether the longer silence has elapsed → end of stream.
-        if currentFile == nil && Double(streamSilenceFrames) / sampleRate >= streamEndSeconds && totalFramesProcessed > Int(sampleRate * 3) {
+        // Long total silence with no recording in progress → stream is over.
+        if currentFile == nil
+            && !streamEndFired
+            && Double(streamSilenceFrames) / sampleRate >= streamEndSeconds
+            && totalFramesProcessed > Int(sampleRate * 2) {
+            streamEndFired = true
             delegate?.recorderDidDetectStreamEnd()
         }
-    }
-
-    private func hasReachedStreamEnd() -> Bool {
-        Double(streamSilenceFrames) / sampleRate >= streamEndSeconds
     }
 
     private func writeBuffer(left: [Float], right: [Float]?) {
@@ -241,14 +268,17 @@ final class Recorder {
         guard let wavURL = currentWavURL else { return }
         currentFile = nil   // closes the WAV file
         currentWavURL = nil
+        hasSeenAudioInTrack = false
 
         let title = snapshotTitle()
-        encodeToMP3(wavURL: wavURL, title: title) { [weak self] result in
+        // Strong self: the Recorder must outlive its encoder so the delegate
+        // fires even if the caller (e.g. AppState) released its reference on stop.
+        encodeToMP3(wavURL: wavURL, title: title) { result in
             switch result {
             case .success(let mp3URL):
-                self?.delegate?.recorderDidFinishTrack(url: mp3URL)
+                self.delegate?.recorderDidFinishTrack(url: mp3URL)
             case .failure(let err):
-                self?.delegate?.recorderDidFail("Encoding failed: \(err.localizedDescription)")
+                self.delegate?.recorderDidFail("Encoding failed: \(err.localizedDescription)")
             }
         }
     }

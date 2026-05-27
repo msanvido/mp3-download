@@ -24,7 +24,7 @@ enum AutoRecord {
         let recorder = Recorder(
             outputDirectory: outputDir,
             source: .all,
-            silenceSplitSeconds: 0.7,
+            silenceSplitSeconds: 0.5,
             streamEndSeconds: 600,        // disable stream-end auto-stop
             silenceThresholdDB: -45
         )

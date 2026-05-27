@@ -20,6 +20,7 @@ struct Entry {
         var mode = "app"
         if args.contains("--self-test") { mode = "self-test" }
         if args.contains("--auto-record") { mode = "auto-record" }
+        if args.contains("--test-recorder") { mode = "test-recorder" }
         let line = "[\(Date())] launched mode=\(mode) argv=\(args)\n"
         try? line.write(to: URL(fileURLWithPath: "/tmp/mp3download-launch.log"), atomically: false, encoding: .utf8)
         switch mode {
@@ -31,6 +32,8 @@ struct Entry {
                 secs = d
             } else { secs = 12 }
             AutoRecord.run(durationSeconds: secs)
+        case "test-recorder":
+            exit(RecorderTest.run())
         default:
             MP3DownloadApp.main()
         }

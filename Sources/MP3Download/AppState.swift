@@ -17,7 +17,7 @@ final class AppState: ObservableObject {
     @Published var currentLevelDB: Float = -120
     @Published var elapsedSeconds: Double = 0
     @Published var completedFiles: [URL] = []
-    @Published var silenceSplitSeconds: Double = 0.7
+    @Published var silenceSplitSeconds: Double = 0.5
     @Published var streamEndSeconds: Double = 25.0
     @Published var silenceThresholdDB: Float = -45
     @Published var availableSources: [AudioSourceUI] = [.all]
@@ -30,6 +30,8 @@ final class AppState: ObservableObject {
     private var nowPlaying: NowPlayingWatcher?
     private var timer: Timer?
     private var trackStart: Date?
+    private var isStopping: Bool = false
+    @Published var autoIdentifyEnabled: Bool = true
 
     init() {
         let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
@@ -96,6 +98,7 @@ final class AppState: ObservableObject {
 
     func start() {
         guard recorder == nil else { return }
+        isStopping = false
         status = .waitingForAudio
         let tapSource: TapSource
         if let selected = availableSources.first(where: { $0.id == selectedSourceID }), let pid = selected.pid {
@@ -136,6 +139,10 @@ final class AppState: ObservableObject {
     }
 
     func stop() {
+        isStopping = true
+        // recorder.stop() synchronously finalizes the current track and kicks off
+        // its MP3 encode; the encoder holds a strong ref to Recorder so the
+        // recorderDidFinishTrack callback still fires after we drop our ref here.
         recorder?.stop()
         recorder = nil
         nowPlaying?.stop()
@@ -145,6 +152,7 @@ final class AppState: ObservableObject {
         status = .idle
         trackStart = nil
         elapsedSeconds = 0
+        currentTrackTitle = ""
     }
 
     func revealInFinder(_ url: URL) {
@@ -212,6 +220,7 @@ extension AppState: RecorderDelegate {
 
     nonisolated func recorderDidStartTrack() {
         Task { @MainActor in
+            guard !self.isStopping else { return }
             self.status = .recording
             self.trackStart = Date()
             self.elapsedSeconds = 0
@@ -224,10 +233,18 @@ extension AppState: RecorderDelegate {
             if !self.completedFiles.contains(url) {
                 self.completedFiles.append(url)
             }
-            self.status = .waitingForAudio
-            self.trackStart = nil
-            self.currentTrackTitle = ""
-            self.recorder?.updateCurrentTitle(nil)
+            // Only return to waitingForAudio if we're still recording; if the
+            // user pressed Stop, the encode that finishes after stop() must not
+            // resurrect the recording UI.
+            if !self.isStopping {
+                self.status = .waitingForAudio
+                self.trackStart = nil
+                self.currentTrackTitle = ""
+                self.recorder?.updateCurrentTitle(nil)
+            }
+            if self.autoIdentifyEnabled {
+                self.identify(url)
+            }
         }
     }
 
