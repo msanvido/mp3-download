@@ -43,6 +43,7 @@ enum AudioCapturePermissions {
         switch micResult {
         case .authorized: micDone(true)
         case .denied:     micDone(false)
+        case .restricted: micDone(false)
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .audio) { granted in micDone(granted) }
         @unknown default: micDone(false)
